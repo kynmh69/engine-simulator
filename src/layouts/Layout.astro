@@ -1,0 +1,59 @@
+---
+interface Props {
+  title?: string;
+  description?: string;
+}
+const {
+  title = 'エンジンシミュレーター',
+  description = '直列3気筒〜12気筒のエンジン音をリアルタイム合成するWebシミュレーター。Astro + Cloudflare Workers。',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#0b0d12" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+    <style is:global>
+      :root {
+        --bg: #0b0d12;
+        --panel: #151922;
+        --panel-2: #1c212d;
+        --line: #2a3140;
+        --text: #e7ecf3;
+        --muted: #95a0b3;
+        --accent: #ff4d3d;
+        --accent-2: #ffb020;
+        --green: #36d399;
+        font-family:
+          'Segoe UI', system-ui, -apple-system, 'Hiragino Kaku Gothic ProN',
+          'Noto Sans JP', Meiryo, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background:
+          radial-gradient(1200px 600px at 50% -10%, #1a1f2b 0%, var(--bg) 60%);
+        color: var(--text);
+        min-height: 100%;
+      }
+
+      a {
+        color: var(--accent-2);
+      }
+    </style>
+  </body>
+</html>
