@@ -1,0 +1,750 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { ENGINE_SPECS } from '../lib/engineSpecs';
+
+const cylinderOptions = Object.keys(ENGINE_SPECS)
+  .map(Number)
+  .sort((a, b) => a - b);
+---
+
+<Layout>
+  <main class="app">
+    <header class="app__header">
+      <h1 class="app__title">
+        <span class="app__title-mark">🔧</span> エンジンシミュレーター
+      </h1>
+      <p class="app__subtitle">
+        直列3気筒〜12気筒のエンジン音をリアルタイム合成。Astro + Cloudflare Workers
+      </p>
+    </header>
+
+    <section class="stage">
+      <!-- 計器エリア -->
+      <div class="panel gauge-panel">
+        <canvas id="tach" class="tach" width="520" height="320"></canvas>
+        <div class="readout">
+          <div class="readout__item">
+            <span class="readout__label">RPM</span>
+            <span class="readout__value" id="rpmValue">0</span>
+          </div>
+          <div class="readout__item">
+            <span class="readout__label">点火周波数</span>
+            <span class="readout__value" id="freqValue">0 <small>Hz</small></span>
+          </div>
+          <div class="readout__item">
+            <span class="readout__label">スロットル</span>
+            <span class="readout__value" id="throttleValue">0 <small>%</small></span>
+          </div>
+        </div>
+        <canvas id="pistons" class="pistons" width="520" height="120"></canvas>
+      </div>
+
+      <!-- 操作エリア -->
+      <div class="panel controls">
+        <button id="power" class="power power--off" type="button">
+          <span class="power__dot"></span>
+          <span class="power__label">エンジン始動</span>
+        </button>
+
+        <div class="control-block">
+          <label class="control-label">気筒数 / レイアウト</label>
+          <div class="cylinders" id="cylinders">
+            {
+              cylinderOptions.map((c) => (
+                <button
+                  class:list={['cyl-btn', { 'cyl-btn--active': c === 4 }]}
+                  data-cyl={c}
+                  type="button"
+                >
+                  {c}
+                </button>
+              ))
+            }
+          </div>
+          <p class="layout-name" id="layoutName">直列4気筒 (Inline-4)</p>
+        </div>
+
+        <div class="control-block">
+          <label class="control-label" for="rpmSlider">
+            回転数 (RPM) <span class="hint">スライダーで設定</span>
+          </label>
+          <input
+            id="rpmSlider"
+            class="slider"
+            type="range"
+            min="700"
+            max="8500"
+            step="10"
+            value="800"
+          />
+        </div>
+
+        <div class="control-block">
+          <label class="control-label">アクセル <span class="hint">押している間だけ吹け上がる</span></label>
+          <button id="pedal" class="pedal" type="button" disabled>
+            🦶 アクセルを踏む (長押し / スペースキー)
+          </button>
+        </div>
+
+        <div class="spec" id="spec">
+          <h2 class="spec__title">エンジン情報</h2>
+          <dl class="spec__list">
+            <div><dt>点火順序</dt><dd id="specFiring">1-3-4-2</dd></div>
+            <div><dt>レッドライン</dt><dd id="specRedline">7,200 rpm</dd></div>
+            <div><dt>アイドル</dt><dd id="specIdle">800 rpm</dd></div>
+          </dl>
+          <p class="spec__desc" id="specDesc"></p>
+          <p class="spec__examples" id="specExamples"></p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="app__footer">
+      <p>
+        Web Audio API によるリアルタイム音響合成 / 物理モデル: 点火周波数 = (RPM /
+        60) × (気筒数 / 2)
+      </p>
+    </footer>
+  </main>
+
+  <style>
+    .app {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 24px 18px 48px;
+    }
+    .app__header {
+      text-align: center;
+      margin-bottom: 22px;
+    }
+    .app__title {
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      margin: 0 0 6px;
+      letter-spacing: 0.02em;
+    }
+    .app__title-mark {
+      filter: drop-shadow(0 2px 6px rgba(255, 77, 61, 0.4));
+    }
+    .app__subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .stage {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 18px;
+    }
+    @media (max-width: 860px) {
+      .stage {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .gauge-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .tach,
+    .pistons {
+      width: 100%;
+      height: auto;
+      max-width: 520px;
+    }
+
+    .readout {
+      display: flex;
+      justify-content: space-around;
+      width: 100%;
+      gap: 10px;
+      padding: 6px 0;
+    }
+    .readout__item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .readout__label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+    .readout__value {
+      font-size: 1.5rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+    .readout__value small {
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .power {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #20131a;
+      color: var(--text);
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .power__dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent);
+    }
+    .power--on {
+      background: #11251c;
+      border-color: #1f5a44;
+    }
+    .power--on .power__dot {
+      background: var(--green);
+      box-shadow: 0 0 12px var(--green);
+      animation: pulse 1.1s infinite;
+    }
+    @keyframes pulse {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.4;
+      }
+    }
+
+    .control-block {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .control-label {
+      font-size: 0.85rem;
+      color: var(--text);
+      font-weight: 600;
+    }
+    .hint {
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 0.75rem;
+      margin-left: 4px;
+    }
+
+    .cylinders {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+    .cyl-btn {
+      padding: 10px 0;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .cyl-btn:hover {
+      border-color: var(--accent-2);
+    }
+    .cyl-btn--active {
+      background: linear-gradient(180deg, var(--accent), #c92f22);
+      border-color: var(--accent);
+      box-shadow: 0 4px 16px rgba(255, 77, 61, 0.35);
+    }
+    .layout-name {
+      margin: 2px 0 0;
+      color: var(--accent-2);
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 8px;
+      border-radius: 6px;
+      background: linear-gradient(90deg, var(--green), var(--accent-2), var(--accent));
+      outline: none;
+    }
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid var(--panel);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      cursor: pointer;
+    }
+    .slider::-moz-range-thumb {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid var(--panel);
+      cursor: pointer;
+    }
+
+    .pedal {
+      width: 100%;
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #2a3140, #1a1f2b);
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.1s ease;
+      touch-action: none;
+    }
+    .pedal:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .pedal--active {
+      background: linear-gradient(180deg, var(--accent-2), #d98b00);
+      color: #1a1206;
+      transform: scale(0.98);
+    }
+
+    .spec {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .spec__title {
+      font-size: 0.9rem;
+      margin: 0 0 10px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+    }
+    .spec__list {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 0 0 10px;
+    }
+    .spec__list dt {
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    .spec__list dd {
+      margin: 2px 0 0;
+      font-weight: 700;
+      font-size: 0.95rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .spec__desc {
+      margin: 0 0 8px;
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+    .spec__examples {
+      margin: 0;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .app__footer {
+      text-align: center;
+      margin-top: 26px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+  </style>
+
+  <script>
+    import { EngineSimulator, ENGINE_LIMITS } from '../lib/engineSound';
+    import { getSpec } from '../lib/engineSpecs';
+
+    const engine = new EngineSimulator();
+
+    // DOM 参照
+    const $ = <T extends HTMLElement>(id: string) =>
+      document.getElementById(id) as T;
+    const powerBtn = $<HTMLButtonElement>('power');
+    const powerLabel = powerBtn.querySelector('.power__label') as HTMLElement;
+    const cylWrap = $<HTMLDivElement>('cylinders');
+    const rpmSlider = $<HTMLInputElement>('rpmSlider');
+    const pedal = $<HTMLButtonElement>('pedal');
+    const tach = $<HTMLCanvasElement>('tach');
+    const pistonCanvas = $<HTMLCanvasElement>('pistons');
+    const rpmValue = $('rpmValue');
+    const freqValue = $('freqValue');
+    const throttleValue = $('throttleValue');
+    const layoutName = $('layoutName');
+    const specFiring = $('specFiring');
+    const specRedline = $('specRedline');
+    const specIdle = $('specIdle');
+    const specDesc = $('specDesc');
+    const specExamples = $('specExamples');
+
+    const tctx = tach.getContext('2d')!;
+    const pctx = pistonCanvas.getContext('2d')!;
+
+    // 状態
+    let cylinders = 4;
+    let spec = getSpec(cylinders);
+    let sliderRpm = spec.idle; // スライダーが指す「ベース回転数」
+    let pedalDown = false;
+    let rpm = 0; // 実回転数（アニメーション）
+    let throttle = 0; // 実スロットル（アニメーション）
+    let running = false;
+    let crankAngle = 0; // ピストン描画用クランク角（度）
+    let lastT = performance.now();
+
+    // ---- UI 更新 ---------------------------------------------------------
+    function applySpec() {
+      spec = getSpec(cylinders);
+      layoutName.textContent = spec.layout;
+      specFiring.textContent = spec.firingOrder;
+      specRedline.textContent = `${spec.redline.toLocaleString()} rpm`;
+      specIdle.textContent = `${spec.idle.toLocaleString()} rpm`;
+      specDesc.textContent = spec.description;
+      specExamples.textContent = `代表例: ${spec.examples}`;
+      // スライダー範囲をレッドラインに合わせる
+      rpmSlider.min = String(spec.idle);
+      rpmSlider.max = String(Math.min(spec.redline + 300, ENGINE_LIMITS.MAX_RPM));
+      sliderRpm = clamp(sliderRpm, spec.idle, spec.redline);
+      rpmSlider.value = String(Math.round(sliderRpm));
+    }
+
+    function setCylinders(c: number) {
+      cylinders = c;
+      cylWrap.querySelectorAll<HTMLButtonElement>('.cyl-btn').forEach((b) => {
+        b.classList.toggle(
+          'cyl-btn--active',
+          Number(b.dataset.cyl) === c,
+        );
+      });
+      applySpec();
+      if (running) engine.update({ cylinders });
+    }
+
+    // ---- イベント --------------------------------------------------------
+    powerBtn.addEventListener('click', async () => {
+      if (!running) {
+        sliderRpm = spec.idle;
+        rpmSlider.value = String(spec.idle);
+        await engine.start({ cylinders, rpm: spec.idle, throttle: 0 });
+        running = true;
+        rpm = spec.idle;
+        powerBtn.classList.remove('power--off');
+        powerBtn.classList.add('power--on');
+        powerLabel.textContent = 'エンジン停止';
+        pedal.disabled = false;
+      } else {
+        await engine.stop();
+        running = false;
+        pedalDown = false;
+        pedal.classList.remove('pedal--active');
+        powerBtn.classList.add('power--off');
+        powerBtn.classList.remove('power--on');
+        powerLabel.textContent = 'エンジン始動';
+        pedal.disabled = true;
+      }
+    });
+
+    cylWrap.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.cyl-btn') as
+        | HTMLButtonElement
+        | null;
+      if (!btn) return;
+      setCylinders(Number(btn.dataset.cyl));
+    });
+
+    rpmSlider.addEventListener('input', () => {
+      sliderRpm = Number(rpmSlider.value);
+    });
+
+    // アクセル（長押し）
+    const pressPedal = () => {
+      if (!running) return;
+      pedalDown = true;
+      pedal.classList.add('pedal--active');
+    };
+    const releasePedal = () => {
+      pedalDown = false;
+      pedal.classList.remove('pedal--active');
+    };
+    pedal.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      pressPedal();
+    });
+    window.addEventListener('pointerup', releasePedal);
+    pedal.addEventListener('pointerleave', releasePedal);
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !e.repeat) {
+        e.preventDefault();
+        pressPedal();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        releasePedal();
+      }
+    });
+
+    // ---- 物理 & 描画ループ ----------------------------------------------
+    function loop(now: number) {
+      const dt = Math.min((now - lastT) / 1000, 0.05);
+      lastT = now;
+
+      if (running) {
+        const targetRpm = pedalDown ? spec.redline : sliderRpm;
+        const targetThrottle = pedalDown
+          ? 1
+          : clamp(
+              (sliderRpm - spec.idle) / (spec.redline - spec.idle),
+              0,
+              1,
+            );
+
+        // 吹け上がりは速く、エンジンブレーキはやや遅く
+        const rising = targetRpm > rpm;
+        const rpmRate = pedalDown ? 6 : rising ? 4 : 2.6;
+        rpm += (targetRpm - rpm) * Math.min(1, rpmRate * dt);
+        throttle += (targetThrottle - throttle) * Math.min(1, 7 * dt);
+
+        engine.update({ cylinders, rpm, throttle });
+      } else {
+        rpm += (0 - rpm) * Math.min(1, 4 * dt);
+        throttle += (0 - throttle) * Math.min(1, 5 * dt);
+      }
+
+      // クランク角を進める
+      crankAngle = (crankAngle + (rpm / 60) * 360 * dt) % 720;
+
+      // 数値表示
+      rpmValue.textContent = String(Math.round(rpm));
+      const freq = (rpm / 60) * (cylinders / 2);
+      freqValue.innerHTML = `${freq.toFixed(1)} <small>Hz</small>`;
+      throttleValue.innerHTML = `${Math.round(throttle * 100)} <small>%</small>`;
+      if (!running) rpmSlider.value = String(Math.round(sliderRpm));
+
+      drawTach();
+      drawPistons();
+      requestAnimationFrame(loop);
+    }
+
+    // ---- タコメーター描画 ------------------------------------------------
+    function drawTach() {
+      const w = tach.width;
+      const h = tach.height;
+      const cx = w / 2;
+      const cy = h * 0.92;
+      const r = Math.min(w, h * 1.6) * 0.42;
+      tctx.clearRect(0, 0, w, h);
+
+      const maxRpm = Math.ceil((spec.redline + 700) / 1000) * 1000;
+      const start = Math.PI * 0.78;
+      const end = Math.PI * 2.22;
+      const redStart = start + (end - start) * (spec.redline / maxRpm);
+
+      // 外周ベース
+      tctx.lineWidth = 16;
+      tctx.lineCap = 'round';
+      tctx.strokeStyle = '#222937';
+      tctx.beginPath();
+      tctx.arc(cx, cy, r, start, end);
+      tctx.stroke();
+
+      // レッドゾーン
+      tctx.strokeStyle = '#ff4d3d';
+      tctx.beginPath();
+      tctx.arc(cx, cy, r, redStart, end);
+      tctx.stroke();
+
+      // 現在値の進捗弧
+      const frac = clamp(rpm / maxRpm, 0, 1);
+      const cur = start + (end - start) * frac;
+      const grad = tctx.createLinearGradient(0, 0, w, 0);
+      grad.addColorStop(0, '#36d399');
+      grad.addColorStop(0.6, '#ffb020');
+      grad.addColorStop(1, '#ff4d3d');
+      tctx.strokeStyle = grad;
+      tctx.lineWidth = 16;
+      tctx.beginPath();
+      tctx.arc(cx, cy, r, start, cur);
+      tctx.stroke();
+
+      // 目盛り
+      tctx.fillStyle = '#95a0b3';
+      tctx.font = '13px system-ui, sans-serif';
+      tctx.textAlign = 'center';
+      tctx.textBaseline = 'middle';
+      const ticks = maxRpm / 1000;
+      for (let i = 0; i <= ticks; i++) {
+        const a = start + (end - start) * (i / ticks);
+        const tx = cx + Math.cos(a) * (r - 34);
+        const ty = cy + Math.sin(a) * (r - 34);
+        const x1 = cx + Math.cos(a) * (r - 10);
+        const y1 = cy + Math.sin(a) * (r - 10);
+        const x2 = cx + Math.cos(a) * (r - 22);
+        const y2 = cy + Math.sin(a) * (r - 22);
+        tctx.strokeStyle = i / ticks >= spec.redline / maxRpm ? '#ff4d3d' : '#3a4254';
+        tctx.lineWidth = 2;
+        tctx.beginPath();
+        tctx.moveTo(x1, y1);
+        tctx.lineTo(x2, y2);
+        tctx.stroke();
+        tctx.fillText(String(i), tx, ty);
+      }
+
+      // 針
+      const na = start + (end - start) * frac;
+      tctx.save();
+      tctx.translate(cx, cy);
+      tctx.rotate(na);
+      tctx.strokeStyle = '#fff';
+      tctx.lineWidth = 4;
+      tctx.lineCap = 'round';
+      tctx.shadowColor = 'rgba(255,77,61,0.6)';
+      tctx.shadowBlur = 12;
+      tctx.beginPath();
+      tctx.moveTo(-r * 0.18, 0);
+      tctx.lineTo(r * 0.9, 0);
+      tctx.stroke();
+      tctx.restore();
+
+      // 中心キャップ
+      tctx.fillStyle = '#fff';
+      tctx.beginPath();
+      tctx.arc(cx, cy, 8, 0, Math.PI * 2);
+      tctx.fill();
+
+      // 中央テキスト
+      tctx.fillStyle = '#e7ecf3';
+      tctx.font = 'bold 30px system-ui, sans-serif';
+      tctx.fillText(String(Math.round(rpm)), cx, cy - r * 0.5);
+      tctx.fillStyle = '#95a0b3';
+      tctx.font = '12px system-ui, sans-serif';
+      tctx.fillText('RPM × 1000', cx, cy - r * 0.5 + 24);
+    }
+
+    // ---- ピストン描画 ----------------------------------------------------
+    function drawPistons() {
+      const w = pistonCanvas.width;
+      const h = pistonCanvas.height;
+      pctx.clearRect(0, 0, w, h);
+
+      const n = cylinders;
+      const gap = w / (n + 1);
+      const cylW = Math.min(gap * 0.6, 34);
+      const top = 16;
+      const stroke = 46;
+      const firePhase = 720 / n; // 点火間隔（度）
+
+      for (let i = 0; i < n; i++) {
+        const x = gap * (i + 1);
+        // ピストン位置（クランク1回転で1往復）
+        const theta = ((crankAngle + i * firePhase) * Math.PI) / 180;
+        const py = top + (1 - (Math.cos(theta) * 0.5 + 0.5)) * stroke;
+
+        // この気筒の燃焼サイクル内位相（0〜720度）
+        const cyclePhase = (crankAngle + i * firePhase) % 720;
+        const firing = cyclePhase < 60 && rpm > 1; // 膨張行程の頭で発火
+        const fireGlow = firing ? 1 - cyclePhase / 60 : 0;
+
+        // シリンダー
+        pctx.fillStyle = '#1a1f2b';
+        pctx.strokeStyle = '#3a4254';
+        pctx.lineWidth = 2;
+        roundRect(pctx, x - cylW / 2, top - 6, cylW, stroke + 44, 6);
+        pctx.fill();
+        pctx.stroke();
+
+        // 燃焼フラッシュ
+        if (fireGlow > 0) {
+          pctx.fillStyle = `rgba(255,${140 + fireGlow * 80},40,${0.15 + fireGlow * 0.6})`;
+          roundRect(pctx, x - cylW / 2 + 2, top - 4, cylW - 4, py - top + 8, 5);
+          pctx.fill();
+        }
+
+        // ピストン
+        const grad = pctx.createLinearGradient(0, py, 0, py + 22);
+        grad.addColorStop(0, '#c8d0dd');
+        grad.addColorStop(1, '#7a8499');
+        pctx.fillStyle = grad;
+        roundRect(pctx, x - cylW / 2 + 3, py, cylW - 6, 20, 3);
+        pctx.fill();
+
+        // コンロッド
+        pctx.strokeStyle = '#5a6478';
+        pctx.lineWidth = 3;
+        pctx.beginPath();
+        pctx.moveTo(x, py + 20);
+        pctx.lineTo(x, top + stroke + 30);
+        pctx.stroke();
+
+        // 番号
+        pctx.fillStyle = '#95a0b3';
+        pctx.font = '11px system-ui, sans-serif';
+        pctx.textAlign = 'center';
+        pctx.fillText(String(i + 1), x, top + stroke + 40);
+      }
+    }
+
+    function roundRect(
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      r: number,
+    ) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function clamp(v: number, min: number, max: number) {
+      return Math.min(max, Math.max(min, v));
+    }
+
+    // 初期化
+    setCylinders(4);
+    requestAnimationFrame((t) => {
+      lastT = t;
+      loop(t);
+    });
+  </script>
+</Layout>
