@@ -13,10 +13,10 @@
     "check": "astro check"
   },
   "dependencies": {
-    "astro": "^5.6.1"
+    "astro": "^5.17.2"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.4",
+    "@astrojs/check": "^0.9.2",
     "typescript": "^5.8.2",
     "wrangler": "^4.4.0"
   }
