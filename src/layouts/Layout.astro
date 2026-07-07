@@ -15,23 +15,33 @@ const {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#0b0d12" />
+    <meta name="theme-color" content="#0a0a0f" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap"
+      rel="stylesheet"
+    />
     <title>{title}</title>
   </head>
   <body>
     <slot />
     <style is:global>
       :root {
-        --bg: #0b0d12;
-        --panel: #151922;
-        --panel-2: #1c212d;
+        --bg: #0a0a0f;
+        --panel: #12141c;
+        --panel-2: #191c27;
         --line: #2a3140;
+        --line-glow: #3d4660;
         --text: #e7ecf3;
-        --muted: #95a0b3;
-        --accent: #ff4d3d;
+        --muted: #8b95a8;
+        --accent: #ff2d3d;
         --accent-2: #ffb020;
+        --cyan: #22d3ee;
         --green: #36d399;
+        --font-display: 'Orbitron', 'Segoe UI', system-ui, sans-serif;
+        --font-mono: 'Share Tech Mono', ui-monospace, monospace;
         font-family:
           'Segoe UI', system-ui, -apple-system, 'Hiragino Kaku Gothic ProN',
           'Noto Sans JP', Meiryo, sans-serif;
@@ -45,10 +55,23 @@ const {
       body {
         margin: 0;
         padding: 0;
-        background:
-          radial-gradient(1200px 600px at 50% -10%, #1a1f2b 0%, var(--bg) 60%);
+        background-color: var(--bg);
         color: var(--text);
         min-height: 100%;
+      }
+
+      /* カーボン調テクスチャ + 上部の赤いアンビエントグロー */
+      body {
+        background-image:
+          radial-gradient(1000px 500px at 50% -8%, rgba(255, 45, 61, 0.09) 0%, transparent 60%),
+          radial-gradient(800px 500px at 85% 110%, rgba(34, 211, 238, 0.05) 0%, transparent 60%),
+          repeating-linear-gradient(
+            45deg,
+            #0c0d13 0px,
+            #0c0d13 2px,
+            #0a0a0f 2px,
+            #0a0a0f 4px
+          );
       }
 
       a {

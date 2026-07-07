@@ -8,20 +8,25 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
 ---
 
 <Layout>
+  <!-- レッドライン到達時に脈動する赤いビネット -->
+  <div id="vignette" class="vignette" aria-hidden="true"></div>
+
   <main class="app">
     <header class="app__header">
-      <h1 class="app__title">
-        <span class="app__title-mark">🔧</span> エンジンシミュレーター
-      </h1>
+      <h1 class="app__title">ENGINE<span class="app__title-accent">SIM</span></h1>
+      <div class="app__stripe"></div>
       <p class="app__subtitle">
-        直列3気筒〜12気筒のエンジン音をリアルタイム合成。Astro + Cloudflare Workers
+        直列3〜12気筒エンジン リアルタイム音響合成コックピット
       </p>
     </header>
 
     <section class="stage">
       <!-- 計器エリア -->
       <div class="panel gauge-panel">
-        <canvas id="tach" class="tach" width="520" height="320"></canvas>
+        <div class="shift-lights" id="shiftLights" aria-hidden="true">
+          {Array.from({ length: 8 }).map(() => <span class="led" />)}
+        </div>
+        <canvas id="tach" class="tach" width="520" height="330"></canvas>
         <div class="readout">
           <div class="readout__item">
             <span class="readout__label">RPM</span>
@@ -29,14 +34,23 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
           </div>
           <div class="readout__item">
             <span class="readout__label">点火周波数</span>
-            <span class="readout__value" id="freqValue">0 <small>Hz</small></span>
+            <span class="readout__value readout__value--cyan" id="freqValue"
+              >0 <small>Hz</small></span
+            >
+          </div>
+          <div class="readout__item">
+            <span class="readout__label">速度</span>
+            <span class="readout__value readout__value--amber" id="speedValue"
+              >0 <small>km/h</small></span
+            >
           </div>
           <div class="readout__item">
             <span class="readout__label">スロットル</span>
             <span class="readout__value" id="throttleValue">0 <small>%</small></span>
           </div>
         </div>
-        <canvas id="pistons" class="pistons" width="520" height="120"></canvas>
+        <canvas id="pistons" class="pistons" width="520" height="210"></canvas>
+        <canvas id="visualizer" class="visualizer" width="520" height="90"></canvas>
       </div>
 
       <!-- 操作エリア -->
@@ -64,6 +78,29 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
           <p class="layout-name" id="layoutName">直列4気筒 (Inline-4)</p>
         </div>
 
+        <div class="control-row">
+          <div class="control-block">
+            <label class="control-label">
+              ギア <span class="hint">↑/W アップ・↓/S ダウン</span>
+            </label>
+            <div class="gearbox">
+              <button id="shiftDown" class="gear-btn" type="button" disabled>▼</button>
+              <span class="gear-display" id="gearValue">N</span>
+              <button id="shiftUp" class="gear-btn" type="button" disabled>▲</button>
+            </div>
+          </div>
+          <div class="control-block">
+            <label class="control-label">マフラー</label>
+            <div class="segment" id="exhaustSeg">
+              <button class="seg-btn seg-btn--active" data-exhaust="stock" type="button"
+                >純正</button
+              >
+              <button class="seg-btn" data-exhaust="sport" type="button">スポーツ</button>
+              <button class="seg-btn" data-exhaust="straight" type="button">直管</button>
+            </div>
+          </div>
+        </div>
+
         <div class="control-block">
           <label class="control-label" for="rpmSlider">
             回転数 (RPM) <span class="hint">スライダーで設定</span>
@@ -76,6 +113,21 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
             max="8500"
             step="10"
             value="800"
+          />
+        </div>
+
+        <div class="control-block">
+          <label class="control-label" for="volSlider">
+            音量 <span class="hint" id="volLabel">80%</span>
+          </label>
+          <input
+            id="volSlider"
+            class="slider slider--vol"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="80"
           />
         </div>
 
@@ -104,31 +156,64 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
         Web Audio API によるリアルタイム音響合成 / 物理モデル: 点火周波数 = (RPM /
         60) × (気筒数 / 2)
       </p>
+      <p>
+        操作: <kbd>Space</kbd> アクセル / <kbd>↑</kbd><kbd>W</kbd> シフトアップ /
+        <kbd>↓</kbd><kbd>S</kbd> シフトダウン
+      </p>
     </footer>
   </main>
 
   <style>
+    .vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      opacity: 0;
+      box-shadow: inset 0 0 140px 40px rgba(255, 45, 61, 0.55);
+    }
+
     .app {
-      max-width: 1080px;
+      max-width: 1180px;
       margin: 0 auto;
-      padding: 24px 18px 48px;
+      padding: 26px 18px 48px;
     }
     .app__header {
       text-align: center;
-      margin-bottom: 22px;
+      margin-bottom: 24px;
     }
     .app__title {
-      font-size: clamp(1.6rem, 4vw, 2.4rem);
-      margin: 0 0 6px;
-      letter-spacing: 0.02em;
+      font-family: var(--font-display);
+      font-weight: 900;
+      font-size: clamp(1.9rem, 5vw, 3rem);
+      margin: 0;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      background: linear-gradient(180deg, #fff 20%, #9aa5bb 90%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 18px rgba(255, 45, 61, 0.35));
     }
-    .app__title-mark {
-      filter: drop-shadow(0 2px 6px rgba(255, 77, 61, 0.4));
+    .app__title-accent {
+      background: linear-gradient(180deg, var(--accent) 10%, #a3121f 90%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .app__stripe {
+      width: 220px;
+      height: 3px;
+      margin: 10px auto 12px;
+      background: linear-gradient(90deg, transparent, var(--accent) 25%, var(--accent-2) 75%, transparent);
+      border-radius: 2px;
+      box-shadow: 0 0 12px rgba(255, 45, 61, 0.5);
     }
     .app__subtitle {
       margin: 0;
       color: var(--muted);
-      font-size: 0.92rem;
+      font-size: 0.9rem;
+      letter-spacing: 0.12em;
     }
 
     .stage {
@@ -136,31 +221,91 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       grid-template-columns: 1.2fr 1fr;
       gap: 18px;
     }
-    @media (max-width: 860px) {
+    @media (max-width: 900px) {
       .stage {
         grid-template-columns: 1fr;
       }
     }
 
     .panel {
-      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      position: relative;
+      /* 四隅のリベット風ドット + 上部ハイライト + カーボン調テクスチャ */
+      background-image:
+        radial-gradient(circle at 35% 35%, #4a5468, #20242f 60%, transparent 65%),
+        radial-gradient(circle at 35% 35%, #4a5468, #20242f 60%, transparent 65%),
+        radial-gradient(circle at 35% 35%, #4a5468, #20242f 60%, transparent 65%),
+        radial-gradient(circle at 35% 35%, #4a5468, #20242f 60%, transparent 65%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
+        repeating-linear-gradient(45deg, #161923 0px, #161923 2px, #12141c 2px, #12141c 4px);
+      background-size: 7px 7px, 7px 7px, 7px 7px, 7px 7px, auto, auto;
+      background-position:
+        9px 9px,
+        calc(100% - 9px) 9px,
+        9px calc(100% - 9px),
+        calc(100% - 9px) calc(100% - 9px),
+        0 0,
+        0 0;
+      background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, repeat;
       border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 18px;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow:
+        0 16px 50px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      overflow: hidden;
+    }
+    /* 上端の赤いアクセントライン */
+    .panel::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(255, 45, 61, 0.7), transparent);
     }
 
     .gauge-panel {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
     .tach,
-    .pistons {
+    .pistons,
+    .visualizer {
       width: 100%;
       height: auto;
       max-width: 520px;
+    }
+
+    .shift-lights {
+      display: flex;
+      gap: 10px;
+      padding: 4px 0 2px;
+    }
+    .led {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #1c202b;
+      border: 1px solid #2c3242;
+      transition: background 0.06s linear, box-shadow 0.06s linear;
+    }
+    .led--g {
+      background: var(--green);
+      border-color: var(--green);
+      box-shadow: 0 0 10px var(--green);
+    }
+    .led--a {
+      background: var(--accent-2);
+      border-color: var(--accent-2);
+      box-shadow: 0 0 10px var(--accent-2);
+    }
+    .led--r {
+      background: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 12px var(--accent);
     }
 
     .readout {
@@ -176,24 +321,33 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       align-items: center;
     }
     .readout__label {
-      font-size: 0.72rem;
+      font-size: 0.68rem;
       color: var(--muted);
-      letter-spacing: 0.08em;
+      letter-spacing: 0.14em;
     }
     .readout__value {
-      font-size: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 1.45rem;
       font-variant-numeric: tabular-nums;
-      font-weight: 700;
+      text-shadow: 0 0 10px rgba(231, 236, 243, 0.25);
+    }
+    .readout__value--cyan {
+      color: var(--cyan);
+      text-shadow: 0 0 10px rgba(34, 211, 238, 0.4);
+    }
+    .readout__value--amber {
+      color: var(--accent-2);
+      text-shadow: 0 0 10px rgba(255, 176, 32, 0.4);
     }
     .readout__value small {
-      font-size: 0.7rem;
+      font-size: 0.68rem;
       color: var(--muted);
     }
 
     .controls {
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: 16px;
     }
 
     .power {
@@ -205,12 +359,17 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       padding: 14px;
       border-radius: 12px;
       border: 1px solid var(--line);
-      background: #20131a;
+      background: linear-gradient(180deg, #241318, #180d11);
       color: var(--text);
-      font-size: 1.05rem;
+      font-family: var(--font-display);
+      font-size: 1rem;
       font-weight: 700;
+      letter-spacing: 0.1em;
       cursor: pointer;
       transition: all 0.2s ease;
+    }
+    .power:hover {
+      border-color: var(--accent);
     }
     .power__dot {
       width: 12px;
@@ -220,7 +379,7 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       box-shadow: 0 0 12px var(--accent);
     }
     .power--on {
-      background: #11251c;
+      background: linear-gradient(180deg, #10281e, #0a1a13);
       border-color: #1f5a44;
     }
     .power--on .power__dot {
@@ -241,17 +400,24 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
     .control-block {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 9px;
+      min-width: 0;
+    }
+    .control-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
     }
     .control-label {
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       color: var(--text);
       font-weight: 600;
+      letter-spacing: 0.04em;
     }
     .hint {
       color: var(--muted);
       font-weight: 400;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       margin-left: 4px;
     }
 
@@ -261,12 +427,13 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       gap: 8px;
     }
     .cyl-btn {
-      padding: 10px 0;
+      padding: 9px 0;
       border-radius: 10px;
       border: 1px solid var(--line);
-      background: var(--panel);
+      background: linear-gradient(180deg, #1a1e2a, #12151f);
       color: var(--text);
-      font-size: 1rem;
+      font-family: var(--font-display);
+      font-size: 0.95rem;
       font-weight: 700;
       cursor: pointer;
       transition: all 0.15s ease;
@@ -275,15 +442,76 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       border-color: var(--accent-2);
     }
     .cyl-btn--active {
-      background: linear-gradient(180deg, var(--accent), #c92f22);
+      background: linear-gradient(180deg, var(--accent), #b01220);
       border-color: var(--accent);
-      box-shadow: 0 4px 16px rgba(255, 77, 61, 0.35);
+      box-shadow: 0 0 16px rgba(255, 45, 61, 0.45);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     }
     .layout-name {
-      margin: 2px 0 0;
+      margin: 0;
       color: var(--accent-2);
       font-weight: 600;
-      font-size: 0.95rem;
+      font-size: 0.92rem;
+    }
+
+    .gearbox {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+    }
+    .gear-btn {
+      padding: 12px 0;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #1a1e2a, #12151f);
+      color: var(--cyan);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+    .gear-btn:hover:enabled {
+      border-color: var(--cyan);
+      box-shadow: 0 0 10px rgba(34, 211, 238, 0.3);
+    }
+    .gear-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .gear-display {
+      font-family: var(--font-display);
+      font-weight: 900;
+      font-size: 2rem;
+      min-width: 52px;
+      text-align: center;
+      color: var(--accent-2);
+      text-shadow: 0 0 16px rgba(255, 176, 32, 0.55);
+    }
+
+    .segment {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .seg-btn {
+      padding: 10px 0;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #1a1e2a, #12151f);
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .seg-btn:hover {
+      border-color: var(--cyan);
+    }
+    .seg-btn--active {
+      background: linear-gradient(180deg, #0d3a44, #082630);
+      border-color: var(--cyan);
+      color: var(--cyan);
+      box-shadow: 0 0 12px rgba(34, 211, 238, 0.3);
     }
 
     .slider {
@@ -294,6 +522,9 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       border-radius: 6px;
       background: linear-gradient(90deg, var(--green), var(--accent-2), var(--accent));
       outline: none;
+    }
+    .slider--vol {
+      background: linear-gradient(90deg, #2a3140, var(--cyan));
     }
     .slider::-webkit-slider-thumb {
       -webkit-appearance: none;
@@ -334,22 +565,23 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       cursor: not-allowed;
     }
     .pedal--active {
-      background: linear-gradient(180deg, var(--accent-2), #d98b00);
-      color: #1a1206;
+      background: linear-gradient(180deg, var(--accent), #a3121f);
+      color: #fff;
       transform: scale(0.98);
+      box-shadow: 0 0 22px rgba(255, 45, 61, 0.5);
     }
 
     .spec {
-      background: var(--panel);
+      background: rgba(10, 11, 16, 0.55);
       border: 1px solid var(--line);
       border-radius: 12px;
       padding: 14px;
     }
     .spec__title {
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       margin: 0 0 10px;
       color: var(--muted);
-      letter-spacing: 0.06em;
+      letter-spacing: 0.12em;
     }
     .spec__list {
       display: grid;
@@ -363,7 +595,7 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
     }
     .spec__list dd {
       margin: 2px 0 0;
-      font-weight: 700;
+      font-family: var(--font-mono);
       font-size: 0.95rem;
       font-variant-numeric: tabular-nums;
     }
@@ -383,12 +615,22 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       margin-top: 26px;
       color: var(--muted);
       font-size: 0.78rem;
+      line-height: 1.9;
+    }
+    kbd {
+      font-family: var(--font-mono);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 1px 6px;
+      margin: 0 2px;
     }
   </style>
 
   <script>
-    import { EngineSimulator, ENGINE_LIMITS } from '../lib/engineSound';
+    import { EngineSimulator, type ExhaustType } from '../lib/engineSound';
     import { getSpec } from '../lib/engineSpecs';
+    import { MAX_GEAR, gearLabel, speedKmh, rpmAfterShift } from '../lib/gearbox';
 
     const engine = new EngineSimulator();
 
@@ -399,11 +641,23 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
     const powerLabel = powerBtn.querySelector('.power__label') as HTMLElement;
     const cylWrap = $<HTMLDivElement>('cylinders');
     const rpmSlider = $<HTMLInputElement>('rpmSlider');
+    const volSlider = $<HTMLInputElement>('volSlider');
+    const volLabel = $('volLabel');
     const pedal = $<HTMLButtonElement>('pedal');
+    const shiftUpBtn = $<HTMLButtonElement>('shiftUp');
+    const shiftDownBtn = $<HTMLButtonElement>('shiftDown');
+    const gearValue = $('gearValue');
+    const exhaustSeg = $<HTMLDivElement>('exhaustSeg');
+    const vignette = $('vignette');
+    const leds = Array.from(
+      document.querySelectorAll<HTMLElement>('#shiftLights .led'),
+    );
     const tach = $<HTMLCanvasElement>('tach');
     const pistonCanvas = $<HTMLCanvasElement>('pistons');
+    const vizCanvas = $<HTMLCanvasElement>('visualizer');
     const rpmValue = $('rpmValue');
     const freqValue = $('freqValue');
+    const speedValue = $('speedValue');
     const throttleValue = $('throttleValue');
     const layoutName = $('layoutName');
     const specFiring = $('specFiring');
@@ -414,6 +668,7 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
 
     const tctx = tach.getContext('2d')!;
     const pctx = pistonCanvas.getContext('2d')!;
+    const vctx = vizCanvas.getContext('2d')!;
 
     // 状態
     let cylinders = 4;
@@ -426,6 +681,25 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
     let crankAngle = 0; // ピストン描画用クランク角（度）
     let lastT = performance.now();
 
+    let gear = 0; // 0 = N, 1〜6
+    let exhaust: ExhaustType = 'stock';
+    let volume = 0.8;
+    let shiftCutUntil = 0; // シフト時スロットルカットの終了時刻 (ms)
+    let limiterCut = false; // レブリミッター作動中の燃料カット
+    let limiterTimer = 0;
+    const SWEEP_DUR = 0.9; // 始動時の針スイープ時間 (s)
+    let sweepT = SWEEP_DUR; // 経過時間（DUR 以上で演出終了）
+
+    // ビジュアライザー用バッファ
+    const SPEC_BINS = 48;
+    const specBuf = new Uint8Array(128);
+    const waveBuf = new Uint8Array(256);
+    const bars = new Float32Array(SPEC_BINS);
+    const peaks = new Float32Array(SPEC_BINS);
+
+    // レッドラインに対する現在回転の割合 (0..1+)
+    const redlineFrac = () => (spec.redline > 0 ? rpm / spec.redline : 0);
+
     // ---- UI 更新 ---------------------------------------------------------
     function applySpec() {
       spec = getSpec(cylinders);
@@ -437,7 +711,7 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       specExamples.textContent = `代表例: ${spec.examples}`;
       // スライダー範囲をレッドラインに合わせる
       rpmSlider.min = String(spec.idle);
-      rpmSlider.max = String(Math.min(spec.redline + 300, ENGINE_LIMITS.MAX_RPM));
+      rpmSlider.max = String(spec.redline);
       sliderRpm = clamp(sliderRpm, spec.idle, spec.redline);
       rpmSlider.value = String(Math.round(sliderRpm));
     }
@@ -454,27 +728,61 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       if (running) engine.update({ cylinders });
     }
 
+    function setGear(g: number) {
+      gear = g;
+      gearValue.textContent = gearLabel(gear);
+    }
+
+    // ---- ギアシフト -------------------------------------------------------
+    function shift(dir: 1 | -1) {
+      if (!running) return;
+      const next = clamp(gear + dir, 0, MAX_GEAR);
+      if (next === gear) return;
+
+      if (gear > 0 && next > 0) {
+        // 車速維持で回転数を合わせ、レブオーバーはレッドラインで頭打ち
+        rpm = clamp(rpmAfterShift(rpm, gear, next), spec.idle * 0.8, spec.redline);
+        // シフト後の回転を新たなベースにする（勝手に元へ戻らないように）
+        sliderRpm = clamp(rpm, spec.idle, spec.redline);
+        rpmSlider.value = String(Math.round(sliderRpm));
+      }
+      setGear(next);
+      shiftCutUntil = performance.now() + 150;
+
+      // 抜けの良いマフラーはシフトアップ時にたまに「ボンッ」と鳴る
+      if (dir === 1 && exhaust !== 'stock' && redlineFrac() > 0.5 && Math.random() < 0.5) {
+        engine.backfire(0.45);
+      }
+    }
+
     // ---- イベント --------------------------------------------------------
     powerBtn.addEventListener('click', async () => {
       if (!running) {
         sliderRpm = spec.idle;
         rpmSlider.value = String(spec.idle);
-        await engine.start({ cylinders, rpm: spec.idle, throttle: 0 });
+        await engine.start({ cylinders, rpm: spec.idle, throttle: 0, exhaust, volume });
         running = true;
         rpm = spec.idle;
+        sweepT = 0; // 針のフルスイープ演出開始
+        setGear(0);
         powerBtn.classList.remove('power--off');
         powerBtn.classList.add('power--on');
         powerLabel.textContent = 'エンジン停止';
         pedal.disabled = false;
+        shiftUpBtn.disabled = false;
+        shiftDownBtn.disabled = false;
       } else {
         await engine.stop();
         running = false;
         pedalDown = false;
+        setGear(0);
         pedal.classList.remove('pedal--active');
         powerBtn.classList.add('power--off');
         powerBtn.classList.remove('power--on');
         powerLabel.textContent = 'エンジン始動';
         pedal.disabled = true;
+        shiftUpBtn.disabled = true;
+        shiftDownBtn.disabled = true;
       }
     });
 
@@ -486,9 +794,30 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       setCylinders(Number(btn.dataset.cyl));
     });
 
+    exhaustSeg.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.seg-btn') as
+        | HTMLButtonElement
+        | null;
+      if (!btn) return;
+      exhaust = btn.dataset.exhaust as ExhaustType;
+      exhaustSeg.querySelectorAll('.seg-btn').forEach((b) => {
+        b.classList.toggle('seg-btn--active', b === btn);
+      });
+      if (running) engine.update({ exhaust });
+    });
+
     rpmSlider.addEventListener('input', () => {
       sliderRpm = Number(rpmSlider.value);
     });
+
+    volSlider.addEventListener('input', () => {
+      volume = Number(volSlider.value) / 100;
+      volLabel.textContent = `${volSlider.value}%`;
+      if (running) engine.update({ volume });
+    });
+
+    shiftUpBtn.addEventListener('click', () => shift(1));
+    shiftDownBtn.addEventListener('click', () => shift(-1));
 
     // アクセル（長押し）
     const pressPedal = () => {
@@ -497,6 +826,17 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       pedal.classList.add('pedal--active');
     };
     const releasePedal = () => {
+      // 高回転からのアクセルオフでバックファイア（抜けの良いマフラーほど高確率）
+      if (pedalDown && running) {
+        const frac = redlineFrac();
+        if (frac > 0.55) {
+          const chance =
+            exhaust === 'straight' ? 0.9 : exhaust === 'sport' ? 0.6 : 0.25;
+          if (Math.random() < chance) {
+            engine.backfire(0.4 + (frac - 0.55) * 1.3);
+          }
+        }
+      }
       pedalDown = false;
       pedal.classList.remove('pedal--active');
     };
@@ -507,9 +847,16 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
     window.addEventListener('pointerup', releasePedal);
     pedal.addEventListener('pointerleave', releasePedal);
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && !e.repeat) {
+      if (e.repeat) return;
+      if (e.code === 'Space') {
         e.preventDefault();
         pressPedal();
+      } else if (e.code === 'ArrowUp' || e.code === 'KeyW') {
+        e.preventDefault();
+        shift(1);
+      } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+        e.preventDefault();
+        shift(-1);
       }
     });
     window.addEventListener('keyup', (e) => {
@@ -525,8 +872,9 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       lastT = now;
 
       if (running) {
-        const targetRpm = pedalDown ? spec.redline : sliderRpm;
-        const targetThrottle = pedalDown
+        const shiftCut = now < shiftCutUntil;
+        let targetRpm = pedalDown ? spec.redline : sliderRpm;
+        let targetThrottle = pedalDown
           ? 1
           : clamp(
               (sliderRpm - spec.idle) / (spec.redline - spec.idle),
@@ -534,14 +882,49 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
               1,
             );
 
-        // 吹け上がりは速く、エンジンブレーキはやや遅く
-        const rising = targetRpm > rpm;
-        const rpmRate = pedalDown ? 6 : rising ? 4 : 2.6;
-        rpm += (targetRpm - rpm) * Math.min(1, rpmRate * dt);
-        throttle += (targetThrottle - throttle) * Math.min(1, 7 * dt);
+        // レブリミッター: レッドライン付近で燃料カットを周期的に繰り返す
+        const atLimiter =
+          targetRpm >= spec.redline - 10 && rpm >= spec.redline - 80;
+        if (atLimiter) {
+          limiterTimer += dt;
+          if (limiterTimer >= 0.06) {
+            limiterTimer = 0;
+            limiterCut = !limiterCut;
+          }
+        } else {
+          limiterCut = false;
+          limiterTimer = 0;
+        }
+        if (limiterCut) {
+          targetRpm = spec.redline - 420;
+          targetThrottle = 0;
+        }
+        if (shiftCut) targetThrottle = 0;
 
-        engine.update({ cylinders, rpm, throttle });
+        // 吹け上がりは速く、エンジンブレーキはやや遅く。ギア入り時は負荷で重く
+        const rising = targetRpm > rpm;
+        const inGear = gear > 0;
+        const rpmRate = limiterCut
+          ? 10
+          : pedalDown
+            ? inGear
+              ? 4
+              : 6.5
+            : rising
+              ? inGear
+                ? 3
+                : 4
+              : inGear
+                ? 2.2
+                : 2.6;
+        rpm += (targetRpm - rpm) * Math.min(1, rpmRate * dt);
+        const thRate = shiftCut || limiterCut ? 18 : 7;
+        throttle += (targetThrottle - throttle) * Math.min(1, thRate * dt);
+
+        engine.update({ cylinders, rpm, throttle, exhaust, volume });
       } else {
+        limiterCut = false;
+        limiterTimer = 0;
         rpm += (0 - rpm) * Math.min(1, 4 * dt);
         throttle += (0 - throttle) * Math.min(1, 5 * dt);
       }
@@ -550,23 +933,58 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       crankAngle = (crankAngle + (rpm / 60) * 360 * dt) % 720;
 
       // 数値表示
+      const speed = speedKmh(rpm, gear);
       rpmValue.textContent = String(Math.round(rpm));
       const freq = (rpm / 60) * (cylinders / 2);
       freqValue.innerHTML = `${freq.toFixed(1)} <small>Hz</small>`;
+      speedValue.innerHTML = `${Math.round(speed)} <small>km/h</small>`;
       throttleValue.innerHTML = `${Math.round(throttle * 100)} <small>%</small>`;
       if (!running) rpmSlider.value = String(Math.round(sliderRpm));
 
-      drawTach();
+      // レッドライン演出（ビネット + シフトライト）
+      updateRedlineFx(now);
+
+      // 始動時スイープ: 表示用回転数だけを一時的に持ち上げる
+      let dispRpm = rpm;
+      if (sweepT < SWEEP_DUR) {
+        sweepT += dt;
+        const maxRpm = Math.ceil((spec.redline + 700) / 1000) * 1000;
+        const frac = Math.sin(Math.PI * Math.min(sweepT / SWEEP_DUR, 1));
+        dispRpm = Math.max(rpm, maxRpm * frac);
+      }
+
+      drawTach(dispRpm, speed);
       drawPistons();
+      drawVisualizer(dt);
       requestAnimationFrame(loop);
     }
 
+    // ---- レッドライン演出 --------------------------------------------------
+    function updateRedlineFx(now: number) {
+      const frac = redlineFrac();
+      const over = clamp((frac - 0.9) / 0.1, 0, 1);
+      vignette.style.opacity =
+        over > 0
+          ? String(over * (0.5 + 0.3 * Math.sin(now * 0.025)))
+          : '0';
+
+      // シフトライト: レッドラインの 55%〜100% で順点灯、リミッター中は点滅
+      const lit = limiterCut
+        ? 0
+        : Math.round(clamp((frac - 0.55) / 0.45, 0, 1) * leds.length);
+      leds.forEach((led, i) => {
+        const cls = i < 3 ? 'led--g' : i < 6 ? 'led--a' : 'led--r';
+        led.classList.toggle(cls, i < lit);
+        if (i >= lit) led.classList.remove('led--g', 'led--a', 'led--r');
+      });
+    }
+
     // ---- タコメーター描画 ------------------------------------------------
-    function drawTach() {
+    function drawTach(dispRpm: number, speed: number) {
       const w = tach.width;
       const h = tach.height;
       const cx = w / 2;
-      const cy = h * 0.92;
+      const cy = h * 0.9;
       const r = Math.min(w, h * 1.6) * 0.42;
       tctx.clearRect(0, 0, w, h);
 
@@ -578,24 +996,28 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       // 外周ベース
       tctx.lineWidth = 16;
       tctx.lineCap = 'round';
-      tctx.strokeStyle = '#222937';
+      tctx.strokeStyle = '#1d2230';
       tctx.beginPath();
       tctx.arc(cx, cy, r, start, end);
       tctx.stroke();
 
-      // レッドゾーン
-      tctx.strokeStyle = '#ff4d3d';
+      // レッドゾーン（発光）
+      tctx.save();
+      tctx.strokeStyle = '#ff2d3d';
+      tctx.shadowColor = 'rgba(255,45,61,0.8)';
+      tctx.shadowBlur = 14;
       tctx.beginPath();
       tctx.arc(cx, cy, r, redStart, end);
       tctx.stroke();
+      tctx.restore();
 
       // 現在値の進捗弧
-      const frac = clamp(rpm / maxRpm, 0, 1);
+      const frac = clamp(dispRpm / maxRpm, 0, 1);
       const cur = start + (end - start) * frac;
       const grad = tctx.createLinearGradient(0, 0, w, 0);
       grad.addColorStop(0, '#36d399');
       grad.addColorStop(0.6, '#ffb020');
-      grad.addColorStop(1, '#ff4d3d');
+      grad.addColorStop(1, '#ff2d3d');
       tctx.strokeStyle = grad;
       tctx.lineWidth = 16;
       tctx.beginPath();
@@ -603,8 +1025,8 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       tctx.stroke();
 
       // 目盛り
-      tctx.fillStyle = '#95a0b3';
-      tctx.font = '13px system-ui, sans-serif';
+      tctx.fillStyle = '#8b95a8';
+      tctx.font = '13px "Share Tech Mono", monospace';
       tctx.textAlign = 'center';
       tctx.textBaseline = 'middle';
       const ticks = maxRpm / 1000;
@@ -616,7 +1038,7 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
         const y1 = cy + Math.sin(a) * (r - 10);
         const x2 = cx + Math.cos(a) * (r - 22);
         const y2 = cy + Math.sin(a) * (r - 22);
-        tctx.strokeStyle = i / ticks >= spec.redline / maxRpm ? '#ff4d3d' : '#3a4254';
+        tctx.strokeStyle = i / ticks >= spec.redline / maxRpm ? '#ff2d3d' : '#3a4254';
         tctx.lineWidth = 2;
         tctx.beginPath();
         tctx.moveTo(x1, y1);
@@ -633,8 +1055,8 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       tctx.strokeStyle = '#fff';
       tctx.lineWidth = 4;
       tctx.lineCap = 'round';
-      tctx.shadowColor = 'rgba(255,77,61,0.6)';
-      tctx.shadowBlur = 12;
+      tctx.shadowColor = 'rgba(255,45,61,0.85)';
+      tctx.shadowBlur = 16;
       tctx.beginPath();
       tctx.moveTo(-r * 0.18, 0);
       tctx.lineTo(r * 0.9, 0);
@@ -647,16 +1069,24 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       tctx.arc(cx, cy, 8, 0, Math.PI * 2);
       tctx.fill();
 
-      // 中央テキスト
+      // 中央デジタル表示: ギア（大）+ 速度
+      tctx.fillStyle = '#ffb020';
+      tctx.font = '900 46px Orbitron, system-ui, sans-serif';
+      tctx.shadowColor = 'rgba(255,176,32,0.6)';
+      tctx.shadowBlur = 18;
+      tctx.fillText(gearLabel(gear), cx, cy - r * 0.52);
+      tctx.shadowBlur = 0;
+
       tctx.fillStyle = '#e7ecf3';
-      tctx.font = 'bold 30px system-ui, sans-serif';
-      tctx.fillText(String(Math.round(rpm)), cx, cy - r * 0.5);
-      tctx.fillStyle = '#95a0b3';
-      tctx.font = '12px system-ui, sans-serif';
-      tctx.fillText('RPM × 1000', cx, cy - r * 0.5 + 24);
+      tctx.font = '20px "Share Tech Mono", monospace';
+      tctx.fillText(`${Math.round(speed)} km/h`, cx, cy - r * 0.26);
+
+      tctx.fillStyle = '#8b95a8';
+      tctx.font = '11px "Share Tech Mono", monospace';
+      tctx.fillText('RPM × 1000', cx, cy - r * 0.12);
     }
 
-    // ---- ピストン描画 ----------------------------------------------------
+    // ---- クランク機構描画 --------------------------------------------------
     function drawPistons() {
       const w = pistonCanvas.width;
       const h = pistonCanvas.height;
@@ -665,15 +1095,27 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
       const n = cylinders;
       const gap = w / (n + 1);
       const cylW = Math.min(gap * 0.6, 34);
-      const top = 16;
-      const stroke = 46;
+      // クランク半径はレイアウトに収まるようにスケール
+      const cr = Math.min(22, gap * 0.35);
+      const rodL = cr * 2.6;
+      const pistonH = Math.max(cylW * 0.55, 14);
+      const crankY = h - 62; // クランク軸の高さ
       const firePhase = 720 / n; // 点火間隔（度）
 
       for (let i = 0; i < n; i++) {
         const x = gap * (i + 1);
-        // ピストン位置（クランク1回転で1往復）
         const theta = ((crankAngle + i * firePhase) * Math.PI) / 180;
-        const py = top + (1 - (Math.cos(theta) * 0.5 + 0.5)) * stroke;
+
+        // コンロッド機構学: ピストンピンの高さ
+        const sin = Math.sin(theta);
+        const cos = Math.cos(theta);
+        const pinX = x + cr * sin;
+        const pinY = crankY - cr * cos;
+        const pistonPinY =
+          crankY - (cr * cos + Math.sqrt(rodL * rodL - cr * cr * sin * sin));
+
+        const tdcTop = crankY - (cr + rodL) - pistonH; // 上死点でのピストン上面
+        const py = pistonPinY - pistonH; // ピストン上面
 
         // この気筒の燃焼サイクル内位相（0〜720度）
         const cyclePhase = (crankAngle + i * firePhase) % 720;
@@ -681,42 +1123,136 @@ const cylinderOptions = Object.keys(ENGINE_SPECS)
         const fireGlow = firing ? 1 - cyclePhase / 60 : 0;
 
         // シリンダー
-        pctx.fillStyle = '#1a1f2b';
+        pctx.fillStyle = '#141824';
         pctx.strokeStyle = '#3a4254';
         pctx.lineWidth = 2;
-        roundRect(pctx, x - cylW / 2, top - 6, cylW, stroke + 44, 6);
+        roundRect(pctx, x - cylW / 2, tdcTop - 6, cylW, cr * 2 + pistonH + 16, 6);
         pctx.fill();
         pctx.stroke();
 
         // 燃焼フラッシュ
         if (fireGlow > 0) {
           pctx.fillStyle = `rgba(255,${140 + fireGlow * 80},40,${0.15 + fireGlow * 0.6})`;
-          roundRect(pctx, x - cylW / 2 + 2, top - 4, cylW - 4, py - top + 8, 5);
+          roundRect(pctx, x - cylW / 2 + 2, tdcTop - 4, cylW - 4, py - tdcTop + 8, 5);
           pctx.fill();
         }
 
+        // コンロッド（ピストンピン → クランクピン）
+        pctx.strokeStyle = '#5a6478';
+        pctx.lineWidth = Math.max(cylW * 0.14, 3);
+        pctx.lineCap = 'round';
+        pctx.beginPath();
+        pctx.moveTo(x, pistonPinY);
+        pctx.lineTo(pinX, pinY);
+        pctx.stroke();
+
+        // クランクウェブ（軸 → ピン + カウンターウェイト）
+        pctx.strokeStyle = '#2c3546';
+        pctx.lineWidth = Math.max(cylW * 0.18, 4);
+        pctx.beginPath();
+        pctx.moveTo(x - cr * sin * 0.6, crankY + cr * cos * 0.6);
+        pctx.lineTo(pinX, pinY);
+        pctx.stroke();
+
+        // クランク軌道（ガイド円）
+        pctx.strokeStyle = 'rgba(34,211,238,0.18)';
+        pctx.lineWidth = 1;
+        pctx.beginPath();
+        pctx.arc(x, crankY, cr, 0, Math.PI * 2);
+        pctx.stroke();
+
+        // クランクピン
+        pctx.fillStyle = '#22d3ee';
+        pctx.beginPath();
+        pctx.arc(pinX, pinY, Math.max(cylW * 0.1, 2.5), 0, Math.PI * 2);
+        pctx.fill();
+
+        // クランク軸
+        pctx.fillStyle = '#465066';
+        pctx.beginPath();
+        pctx.arc(x, crankY, Math.max(cylW * 0.09, 2), 0, Math.PI * 2);
+        pctx.fill();
+
         // ピストン
-        const grad = pctx.createLinearGradient(0, py, 0, py + 22);
+        const grad = pctx.createLinearGradient(0, py, 0, py + pistonH);
         grad.addColorStop(0, '#c8d0dd');
         grad.addColorStop(1, '#7a8499');
         pctx.fillStyle = grad;
-        roundRect(pctx, x - cylW / 2 + 3, py, cylW - 6, 20, 3);
+        roundRect(pctx, x - cylW / 2 + 3, py, cylW - 6, pistonH, 3);
         pctx.fill();
 
-        // コンロッド
-        pctx.strokeStyle = '#5a6478';
-        pctx.lineWidth = 3;
+        // ピストンピン
+        pctx.fillStyle = '#39415a';
         pctx.beginPath();
-        pctx.moveTo(x, py + 20);
-        pctx.lineTo(x, top + stroke + 30);
-        pctx.stroke();
+        pctx.arc(x, pistonPinY, Math.max(cylW * 0.08, 2), 0, Math.PI * 2);
+        pctx.fill();
 
         // 番号
-        pctx.fillStyle = '#95a0b3';
-        pctx.font = '11px system-ui, sans-serif';
+        pctx.fillStyle = '#8b95a8';
+        pctx.font = '11px "Share Tech Mono", monospace';
         pctx.textAlign = 'center';
-        pctx.fillText(String(i + 1), x, top + stroke + 40);
+        pctx.fillText(String(i + 1), x, h - 10);
       }
+
+      // クランクシャフト軸線
+      pctx.strokeStyle = 'rgba(70,80,102,0.5)';
+      pctx.lineWidth = 2;
+      pctx.beginPath();
+      pctx.moveTo(gap * 0.5, crankY);
+      pctx.lineTo(w - gap * 0.5, crankY);
+      pctx.stroke();
+    }
+
+    // ---- オーディオビジュアライザー描画 -------------------------------------
+    function drawVisualizer(dt: number) {
+      const w = vizCanvas.width;
+      const h = vizCanvas.height;
+      vctx.clearRect(0, 0, w, h);
+
+      const hasData = engine.getSpectrum(specBuf);
+      const barW = w / SPEC_BINS;
+
+      const grad = vctx.createLinearGradient(0, h, 0, 0);
+      grad.addColorStop(0, '#36d399');
+      grad.addColorStop(0.55, '#ffb020');
+      grad.addColorStop(1, '#ff2d3d');
+
+      for (let i = 0; i < SPEC_BINS; i++) {
+        const v = hasData ? specBuf[i] / 255 : 0;
+        // 立ち上がりは速く、減衰は緩やかに
+        const rate = v > bars[i] ? 22 : 6;
+        bars[i] += (v - bars[i]) * Math.min(1, rate * dt);
+        // ピークホールドはゆっくり落ちる
+        peaks[i] = Math.max(peaks[i] - 0.5 * dt, bars[i]);
+
+        const bh = bars[i] * (h - 8);
+        vctx.fillStyle = grad;
+        vctx.fillRect(i * barW + 1, h - bh, barW - 2, bh);
+
+        if (peaks[i] > 0.01) {
+          const py = h - peaks[i] * (h - 8);
+          vctx.fillStyle = 'rgba(231,236,243,0.8)';
+          vctx.fillRect(i * barW + 1, py - 2, barW - 2, 2);
+        }
+      }
+
+      // 波形オーバーレイ
+      if (engine.getWaveform(waveBuf)) {
+        vctx.strokeStyle = 'rgba(34,211,238,0.55)';
+        vctx.lineWidth = 1.5;
+        vctx.beginPath();
+        for (let i = 0; i < waveBuf.length; i++) {
+          const x = (i / (waveBuf.length - 1)) * w;
+          const y = h / 2 + ((waveBuf[i] - 128) / 128) * (h * 0.45);
+          if (i === 0) vctx.moveTo(x, y);
+          else vctx.lineTo(x, y);
+        }
+        vctx.stroke();
+      }
+
+      // ベースライン
+      vctx.fillStyle = 'rgba(42,49,64,0.8)';
+      vctx.fillRect(0, h - 1, w, 1);
     }
 
     function roundRect(
