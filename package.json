@@ -1,0 +1,21 @@
+{
+  "name": "engine-simulator",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Inline 3 to 12 cylinder engine sound simulator built with Astro, deployable to Cloudflare Workers.",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "wrangler dev",
+    "deploy": "astro build && wrangler deploy",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.6.0",
+    "astro": "^5.13.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

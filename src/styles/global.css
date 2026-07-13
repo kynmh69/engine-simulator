@@ -1,0 +1,291 @@
+:root {
+  --bg: #0a0e14;
+  --bg-panel: #141b26;
+  --bg-panel-2: #1c2635;
+  --line: #2a3a4f;
+  --text: #e6edf3;
+  --text-dim: #8b98a9;
+  --accent: #ff5722;
+  --accent-2: #ff9800;
+  --accent-glow: rgba(255, 87, 34, 0.55);
+  --green: #4caf50;
+  --red: #f44336;
+  --font: 'Segoe UI', 'Helvetica Neue', system-ui, -apple-system, 'Hiragino Kaku Gothic ProN',
+    'Meiryo', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle at 50% -10%, #1a2333 0%, var(--bg) 60%);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+header.hero {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+header.hero h1 {
+  font-size: clamp(1.6rem, 4vw, 2.6rem);
+  margin: 0 0 6px;
+  letter-spacing: 0.02em;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+header.hero p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+}
+
+.panel {
+  background: linear-gradient(180deg, var(--bg-panel) 0%, var(--bg-panel-2) 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  margin-bottom: 20px;
+}
+
+/* ---------- Tachometer ---------- */
+.gauge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: center;
+  justify-content: center;
+}
+
+.tach {
+  width: 300px;
+  height: 300px;
+  flex: 0 0 auto;
+}
+
+.tach-readout {
+  text-align: center;
+}
+
+.tach-readout .rpm-value {
+  font-size: 3rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.tach-readout .rpm-unit {
+  color: var(--text-dim);
+  letter-spacing: 0.3em;
+  font-size: 0.8rem;
+}
+
+.spec-line {
+  margin-top: 12px;
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.spec-desc {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  max-width: 240px;
+  margin: 6px auto 0;
+  line-height: 1.5;
+}
+
+/* ---------- Cylinders visual ---------- */
+.cylinders {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: flex-end;
+  margin-top: 8px;
+  min-height: 120px;
+}
+
+.cyl {
+  width: 34px;
+  background: #0d131c;
+  border: 1px solid var(--line);
+  border-radius: 6px 6px 4px 4px;
+  height: 110px;
+  position: relative;
+  overflow: hidden;
+}
+
+.piston {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  height: 26px;
+  background: linear-gradient(180deg, #6b7787, #39434f);
+  border-radius: 3px;
+  top: 10px;
+  transition: none;
+}
+
+.cyl .spark {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 20%, var(--accent-2), transparent 60%);
+  opacity: 0;
+}
+
+.cyl .label {
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.6rem;
+  color: var(--text-dim);
+}
+
+/* ---------- Controls ---------- */
+.controls-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.field label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cyl-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cyl-buttons button {
+  flex: 1 1 auto;
+  min-width: 60px;
+  padding: 10px 0;
+  background: var(--bg-panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cyl-buttons button:hover {
+  border-color: var(--accent);
+}
+
+.cyl-buttons button.active {
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+  height: 6px;
+}
+
+.throttle-slider {
+  height: 40px;
+}
+
+.btn-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.btn {
+  flex: 1;
+  padding: 16px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: transform 0.08s ease, box-shadow 0.2s ease;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-start {
+  background: linear-gradient(180deg, #5cd66a, var(--green));
+  color: #04220a;
+  box-shadow: 0 6px 18px rgba(76, 175, 80, 0.35);
+}
+
+.btn-stop {
+  background: linear-gradient(180deg, #ff6b60, var(--red));
+  color: #2a0402;
+  box-shadow: 0 6px 18px rgba(244, 67, 54, 0.35);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.throttle-hint {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  text-align: center;
+  margin-top: 6px;
+}
+
+.value-badge {
+  float: right;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+
+footer.foot {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-top: 24px;
+  line-height: 1.6;
+}
+
+footer.foot code {
+  background: var(--bg-panel-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent-2);
+}
+
+@media (min-width: 620px) {
+  .controls-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,329 @@
+---
+export const prerender = true;
+
+import Layout from '../layouts/Layout.astro';
+import { ENGINE_SPECS, MIN_CYLINDERS, MAX_CYLINDERS } from '../engine/config';
+
+const cylinderOptions = Array.from(
+  { length: MAX_CYLINDERS - MIN_CYLINDERS + 1 },
+  (_, i) => MIN_CYLINDERS + i,
+);
+---
+
+<Layout>
+  <main class="wrap">
+    <header class="hero">
+      <h1>🏁 Engine Simulator</h1>
+      <p>直列3気筒〜12気筒のエンジン音をリアルタイム合成</p>
+    </header>
+
+    <!-- ================= Gauge & visual ================= -->
+    <section class="panel">
+      <div class="gauge-row">
+        <svg class="tach" viewBox="0 0 200 200" aria-label="タコメーター">
+          <!-- track -->
+          <path
+            id="tach-track"
+            d="M 30 160 A 80 80 0 1 1 170 160"
+            fill="none"
+            stroke="#243040"
+            stroke-width="14"
+            stroke-linecap="round"></path>
+          <!-- redline zone -->
+          <path
+            id="tach-redzone"
+            fill="none"
+            stroke="#f44336"
+            stroke-width="14"
+            stroke-linecap="round"
+            opacity="0.85"></path>
+          <!-- value arc -->
+          <path
+            id="tach-value"
+            d="M 30 160 A 80 80 0 1 1 170 160"
+            fill="none"
+            stroke="url(#tach-grad)"
+            stroke-width="14"
+            stroke-linecap="round"
+            stroke-dasharray="0 999"></path>
+          <defs>
+            <linearGradient id="tach-grad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#ff9800"></stop>
+              <stop offset="1" stop-color="#ff5722"></stop>
+            </linearGradient>
+          </defs>
+          <!-- needle -->
+          <g id="tach-needle" transform="rotate(-120 100 100)">
+            <line x1="100" y1="100" x2="100" y2="38" stroke="#ff5722" stroke-width="3"></line>
+          </g>
+          <circle cx="100" cy="100" r="7" fill="#e6edf3"></circle>
+          <text
+            id="tach-x1000"
+            x="100"
+            y="150"
+            text-anchor="middle"
+            fill="#8b98a9"
+            font-size="9">RPM ×1000</text
+          >
+        </svg>
+
+        <div class="tach-readout">
+          <div>
+            <span id="rpm-value" class="rpm-value">0</span>
+          </div>
+          <div class="rpm-unit">RPM</div>
+          <div id="spec-label" class="spec-line">{ENGINE_SPECS[4].label}</div>
+          <div id="spec-desc" class="spec-desc">{ENGINE_SPECS[4].description}</div>
+        </div>
+      </div>
+
+      <div id="cylinders" class="cylinders" aria-hidden="true"></div>
+    </section>
+
+    <!-- ================= Controls ================= -->
+    <section class="panel">
+      <div class="controls-grid">
+        <div class="field">
+          <label>気筒数 / Cylinders</label>
+          <div id="cyl-buttons" class="cyl-buttons">
+            {
+              cylinderOptions.map((n) => (
+                <button type="button" data-cyl={n} class={n === 4 ? 'active' : ''}>
+                  I{n}
+                </button>
+              ))
+            }
+          </div>
+        </div>
+
+        <div class="field">
+          <label>
+            スロットル / Throttle
+            <span id="throttle-badge" class="value-badge">0%</span>
+          </label>
+          <input
+            id="throttle"
+            class="throttle-slider"
+            type="range"
+            min="0"
+            max="100"
+            value="0"
+          />
+          <div class="throttle-hint">
+            スライダーを離すとアイドリングに戻ります（スペースキーでも操作可）
+          </div>
+        </div>
+
+        <div class="field">
+          <label>
+            音量 / Volume
+            <span id="volume-badge" class="value-badge">80%</span>
+          </label>
+          <input id="volume" type="range" min="0" max="100" value="80" />
+        </div>
+
+        <div class="btn-row">
+          <button id="start-btn" class="btn btn-start" type="button">▶ エンジン始動</button>
+          <button id="stop-btn" class="btn btn-stop" type="button" disabled>■ 停止</button>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <div>
+        Built with <code>Astro</code> · Web Audio <code>AudioWorklet</code> ·
+        deploy to <code>Cloudflare Workers</code>
+      </div>
+      <div>音が出ます。始動前に音量にご注意ください。</div>
+    </footer>
+  </main>
+
+  <script>
+    import { EngineSimulator } from '../engine/simulator';
+    import { ENGINE_SPECS, firingOrder } from '../engine/config';
+
+    const sim = new EngineSimulator();
+
+    const $ = <T extends Element>(sel: string) => document.querySelector(sel) as T;
+
+    const rpmValue = $('#rpm-value') as HTMLElement;
+    const specLabel = $('#spec-label') as HTMLElement;
+    const specDesc = $('#spec-desc') as HTMLElement;
+    const needle = $('#tach-needle') as SVGGElement;
+    const valueArc = $('#tach-value') as SVGPathElement;
+    const redzone = $('#tach-redzone') as SVGPathElement;
+    const cylBox = $('#cylinders') as HTMLElement;
+    const throttle = $('#throttle') as HTMLInputElement;
+    const throttleBadge = $('#throttle-badge') as HTMLElement;
+    const volume = $('#volume') as HTMLInputElement;
+    const volumeBadge = $('#volume-badge') as HTMLElement;
+    const startBtn = $('#start-btn') as HTMLButtonElement;
+    const stopBtn = $('#stop-btn') as HTMLButtonElement;
+    const cylButtons = Array.from(
+      document.querySelectorAll('#cyl-buttons button'),
+    ) as HTMLButtonElement[];
+
+    // Tachometer geometry: the arc sweeps 300° from -120° to +180°.
+    const ARC_LEN = 419; // approx path length of the 300° arc (r=80)
+    const START_ANGLE = -120;
+    const SWEEP = 300;
+
+    let currentCyl = 4;
+    let crankAngle = 0; // radians, for the piston animation
+    let lastFrame = performance.now();
+    let cylEls: { spark: HTMLElement; piston: HTMLElement; order: number }[] = [];
+
+    function buildRedzone() {
+      // Redline zone occupies the last 12% of the sweep.
+      const startLen = ARC_LEN * 0.88;
+      redzone.setAttribute('d', valueArc.getAttribute('d')!);
+      redzone.style.strokeDasharray = `${ARC_LEN - startLen} 999`;
+      redzone.style.strokeDashoffset = `${-startLen}`;
+    }
+
+    function buildCylinders(count: number) {
+      const order = firingOrder(count);
+      cylBox.innerHTML = '';
+      cylEls = [];
+      for (let i = 0; i < count; i++) {
+        const cyl = document.createElement('div');
+        cyl.className = 'cyl';
+        const piston = document.createElement('div');
+        piston.className = 'piston';
+        const spark = document.createElement('div');
+        spark.className = 'spark';
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = String(i + 1);
+        cyl.append(piston, spark, label);
+        cylBox.appendChild(cyl);
+        // Position in the firing sequence (0..count-1).
+        const orderPos = order.indexOf(i + 1);
+        cylEls.push({ spark, piston, order: orderPos });
+      }
+    }
+
+    function selectCylinders(count: number) {
+      currentCyl = count;
+      sim.setCylinders(count);
+      const spec = ENGINE_SPECS[count];
+      specLabel.textContent = spec.label;
+      specDesc.textContent = spec.description;
+      cylButtons.forEach((b) =>
+        b.classList.toggle('active', Number(b.dataset.cyl) === count),
+      );
+      buildCylinders(count);
+      buildRedzone();
+    }
+
+    function render(state: { rpm: number; throttle: number }) {
+      const spec = sim.currentSpec;
+      const frac = Math.max(0, Math.min(1, state.rpm / spec.redlineRpm));
+
+      rpmValue.textContent = String(Math.round(state.rpm));
+      rpmValue.style.color = frac > 0.88 ? '#f44336' : '#e6edf3';
+
+      const angle = START_ANGLE + frac * SWEEP;
+      needle.setAttribute('transform', `rotate(${angle + 90} 100 100)`);
+      valueArc.style.strokeDasharray = `${frac * ARC_LEN} 999`;
+    }
+
+    // Piston + spark animation, driven independently for smoothness.
+    function animate(now: number) {
+      const dt = (now - lastFrame) / 1000;
+      lastFrame = now;
+
+      const rpm = sim.currentRpm;
+      // Crank angular velocity (rad/s). 1 rev = 2π.
+      crankAngle += (rpm / 60) * 2 * Math.PI * dt;
+      const count = currentCyl;
+      const fireCycle = 4 * Math.PI; // 720° per power cycle
+
+      for (let i = 0; i < cylEls.length; i++) {
+        const { piston, spark, order } = cylEls[i];
+        // Each piston is offset by its position in the firing order.
+        const phase = crankAngle + (order / count) * fireCycle;
+        const pos = (1 - Math.cos(phase)) * 0.5; // 0 top .. 1 bottom
+        piston.style.transform = `translateY(${pos * 60}px)`;
+
+        // Spark flashes near top-dead-centre of the power stroke.
+        const cyclePos = ((phase % fireCycle) + fireCycle) % fireCycle;
+        const near = Math.abs(cyclePos - fireCycle) < 0.35 || cyclePos < 0.35;
+        spark.style.opacity = near && rpm > 1 ? '0.9' : '0';
+      }
+      requestAnimationFrame(animate);
+    }
+
+    sim.onUpdate = render;
+
+    // ---- Controls wiring ----
+    cylButtons.forEach((btn) =>
+      btn.addEventListener('click', () => selectCylinders(Number(btn.dataset.cyl))),
+    );
+
+    const applyThrottle = () => {
+      const v = Number(throttle.value);
+      throttleBadge.textContent = `${v}%`;
+      sim.setThrottle(v / 100);
+    };
+    throttle.addEventListener('input', applyThrottle);
+    // Spring back to idle when released (mouse/touch up).
+    const releaseThrottle = () => {
+      throttle.value = '0';
+      applyThrottle();
+    };
+    throttle.addEventListener('pointerup', releaseThrottle);
+    throttle.addEventListener('pointercancel', releaseThrottle);
+
+    volume.addEventListener('input', () => {
+      const v = Number(volume.value);
+      volumeBadge.textContent = `${v}%`;
+      sim.setVolume(v / 100);
+    });
+
+    // Hold SPACE to blip the throttle.
+    let spaceHeld = false;
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !spaceHeld && sim.isRunning) {
+        e.preventDefault();
+        spaceHeld = true;
+        throttle.value = '100';
+        applyThrottle();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        spaceHeld = false;
+        releaseThrottle();
+      }
+    });
+
+    startBtn.addEventListener('click', async () => {
+      startBtn.disabled = true;
+      try {
+        await sim.start();
+        stopBtn.disabled = false;
+      } catch (err) {
+        console.error(err);
+        startBtn.disabled = false;
+        alert('オーディオの初期化に失敗しました: ' + err);
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      sim.stop();
+      stopBtn.disabled = true;
+      startBtn.disabled = false;
+      throttle.value = '0';
+      applyThrottle();
+    });
+
+    // Init
+    selectCylinders(4);
+    sim.setVolume(0.8);
+    requestAnimationFrame((t) => {
+      lastFrame = t;
+      animate(t);
+    });
+  </script>
+</Layout>
