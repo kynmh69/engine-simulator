@@ -4,6 +4,9 @@
   "main": "./dist/_worker.js/index.js",
   "compatibility_date": "2025-07-01",
   "compatibility_flags": ["nodejs_compat"],
+  "build": {
+    "command": "npm run build"
+  },
   "assets": {
     "binding": "ASSETS",
     "directory": "./dist"
